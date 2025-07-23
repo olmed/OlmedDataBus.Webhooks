@@ -1,0 +1,6 @@
+@OlmedDataBus.Webhooks.TestHost_HostAddress = http://localhost:5261
+
+GET {{OlmedDataBus.Webhooks.TestHost_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
