@@ -1,5 +1,8 @@
 var builder = WebApplication.CreateBuilder(args);
 
+// Dodaj ³adowanie appsettings.Local.json jeœli istnieje (dla jawnoœci)
+builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
+
 // Add services to the container.
 
 builder.Services.AddControllers();

@@ -1,0 +1,6 @@
+﻿{
+  "OlmedDataBus:WebhookKeys": {
+    "EncryptionKey": "BASE64_ENCRYPTION_KEY",
+    "HmacKey": "BASE64_HMAC_KEY"
+  }
+}
