@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using SecureWebhook;
 
 namespace OlmedDataBus.Webhooks.TestHost.Controllers
@@ -9,20 +10,27 @@ namespace OlmedDataBus.Webhooks.TestHost.Controllers
     public class WebhookController : ControllerBase
     {
         private readonly SecureWebhookHelper _helper;
+        private readonly ILogger<WebhookController> _logger;
 
-        public WebhookController(IConfiguration configuration)
+        public WebhookController(IConfiguration configuration, ILogger<WebhookController> logger)
         {
             var encryptionKey = configuration["OlmedDataBus:WebhookKeys:EncryptionKey"] ?? string.Empty;
             var hmacKey = configuration["OlmedDataBus:WebhookKeys:HmacKey"] ?? string.Empty;
             _helper = new SecureWebhookHelper(encryptionKey, hmacKey);
+            _logger = logger;
         }
 
         [HttpPost]
-        public IActionResult Receive([FromBody] WebhookPayload payload)
+        public IActionResult Receive(
+            [FromBody] WebhookPayload payload,
+            [FromHeader(Name = "X-OLMED-ERP-API-SIGNATURE")] string signature)
         {
-            if (_helper.TryDecryptAndVerify(payload.Data, payload.IV, payload.Signature, out var json))
+            if (string.IsNullOrWhiteSpace(signature))
+                return BadRequest("Brak nag³ówka X-OLMED-ERP-API-SIGNATURE.");
+
+            if (_helper.TryDecryptAndVerifyWithIvPrefix(payload.guid, payload.webhookType, payload.webhookData, signature, out var json))
             {
-                // Mo¿esz zdeserializowaæ json do obiektu, np. dynamic lub konkretnej klasy
+                _logger.LogInformation("Odszyfrowana zawartoœæ webhooka: {Decrypted}", json);
                 return Ok(new { Success = true, Decrypted = json });
             }
             return BadRequest("Invalid signature or decryption failed.");
@@ -31,8 +39,8 @@ namespace OlmedDataBus.Webhooks.TestHost.Controllers
 
     public class WebhookPayload
     {
-        public string Data { get; set; } = string.Empty;
-        public string IV { get; set; } = string.Empty;
-        public string Signature { get; set; } = string.Empty;
+        public string guid { get; set; } = string.Empty;
+        public string webhookType { get; set; } = string.Empty;
+        public string webhookData { get; set; } = string.Empty;
     }
 }

@@ -1,55 +1,112 @@
-# OlmedDataBus.Webhooks.Client
+ï»¿# OlmedDataBus.Webhooks.Client
 
 ## Opis
 
-`OlmedDataBus.Webhooks.Client` to biblioteka .NET umo¿liwiaj¹ca bezpieczn¹ obs³ugê webhooków pochodz¹cych z szyny danych OLMED. Umo¿liwia ona:
-- weryfikacjê podpisu HMAC SHA256 przesy³anych danych,
+`OlmedDataBus.Webhooks.Client` to biblioteka .NET umoÅ¼liwiajÄ…ca bezpiecznÄ… obsÅ‚ugÄ™ webhookÃ³w pochodzÄ…cych z szyny danych OLMED. UmoÅ¼liwia ona:
+- weryfikacjÄ™ podpisu HMAC SHA256 przesyÅ‚anych danych,
 - odszyfrowanie zaszyfrowanego payloadu (AES-256-CBC),
-- prost¹ integracjê z aplikacjami .NET (np. ASP.NET Core, Windows Service, itp.).
+- prostÄ… integracjÄ™ z aplikacjami .NET (np. ASP.NET Core, Windows Service, itp.).
 
-Dziêki tej bibliotece partnerzy OLMED mog¹ w ³atwy sposób odbieraæ, weryfikowaæ i odszyfrowywaæ dane przesy³ane przez webhooki.
-
----
-
-## Przyk³adowe u¿ycie (na podstawie projektu TestHost)
-
-Poni¿ej znajduje siê uproszczony przyk³ad u¿ycia biblioteki w projekcie ASP.NET Core Web API (`OlmedDataBus.Webhooks.TestHost`):
+DziÄ™ki tej bibliotece partnerzy OLMED mogÄ… w Å‚atwy sposÃ³b odbieraÄ‡, weryfikowaÄ‡ i odszyfrowywaÄ‡ dane przesyÅ‚ane przez webhooki.
 
 ---
 
-## Instrukcja do³¹czenia biblioteki do projektu
+## PrzykÅ‚adowe uÅ¼ycie (na podstawie projektu TestHost)
 
-### 1. Dodanie przez NuGet (zalecane, jeœli biblioteka jest publikowana)
+PoniÅ¼ej znajduje siÄ™ uproszczony przykÅ‚ad uÅ¼ycia biblioteki w projekcie ASP.NET Core Web API (`OlmedDataBus.Webhooks.TestHost`):
 
-W Mened¿erze pakietów NuGet wyszukaj `OlmedDataBus.Webhooks.Client` i zainstaluj do swojego projektu.
+```csharp
+[ApiController]
+[Route("api/[controller]")]
+public class WebhookController : ControllerBase
+{
+    private readonly SecureWebhookHelper _helper;
+    private readonly ILogger<WebhookController> _logger;
 
-**lub** przez konsolê:
+    public WebhookController(IConfiguration configuration, ILogger<WebhookController> logger)
+    {
+        var encryptionKey = configuration["OlmedDataBus:WebhookKeys:EncryptionKey"] ?? string.Empty;
+        var hmacKey = configuration["OlmedDataBus:WebhookKeys:HmacKey"] ?? string.Empty;
+        _helper = new SecureWebhookHelper(encryptionKey, hmacKey);
+        _logger = logger;
+    }
 
-### 2. Rêczne do³¹czenie pliku DLL
+    [HttpPost]
+    public IActionResult Receive(
+        [FromBody] WebhookPayload payload,
+        [FromHeader(Name = "X-OLMED-ERP-API-SIGNATURE")] string signature)
+    {
+        if (string.IsNullOrWhiteSpace(signature))
+            return BadRequest("Brak nagÅ‚Ã³wka X-OLMED-ERP-API-SIGNATURE.");
 
-Jeœli posiadasz tylko plik `OlmedDataBus.Webhooks.Client.dll`:
+        if (_helper.TryDecryptAndVerifyWithIvPrefix(payload.guid, payload.webhookType, payload.webhookData, signature, out var json))
+        {
+            // Zamiana odszyfrowanego JSON na obiekt
+            var obj = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(json);
+            _logger.LogInformation("Odszyfrowana zawartoÅ›Ä‡ webhooka: {Decrypted}", json);
+            return Ok(new { Success = true, Decrypted = obj });
+        }
+        return BadRequest("Invalid signature or decryption failed.");
+    }
+}
+
+public class WebhookPayload
+{
+    public string guid { get; set; } = string.Empty;
+    public string webhookType { get; set; } = string.Empty;
+    public string webhookData { get; set; } = string.Empty;
+}
+```
+
+---
+
+## Instrukcja doÅ‚Ä…czenia biblioteki do projektu
+
+### 1. Dodanie przez NuGet (zalecane, jeÅ›li biblioteka jest publikowana)
+
+W MenedÅ¼erze pakietÃ³w NuGet wyszukaj `OlmedDataBus.Webhooks.Client` i zainstaluj do swojego projektu.
+
+**lub** przez konsolÄ™:
+
+```
+dotnet add package OlmedDataBus.Webhooks.Client
+```
+
+### 2. RÄ™czne doÅ‚Ä…czenie pliku DLL
+
+JeÅ›li posiadasz tylko plik `OlmedDataBus.Webhooks.Client.dll`:
 
 1. Skopiuj plik DLL do katalogu swojego projektu (np. do folderu `libs`).
-2. Kliknij prawym przyciskiem myszy na projekt w Visual Studio ? **Dodaj** ? **Odwo³anie...**.
-3. Wybierz **Przegl¹daj** i wska¿ plik DLL.
-4. ZatwierdŸ dodanie odwo³ania.
+2. Kliknij prawym przyciskiem myszy na projekt w Visual Studio â†’ **Dodaj** â†’ **OdwoÅ‚anie...**.
+3. Wybierz **PrzeglÄ…daj** i wskaÅ¼ plik DLL.
+4. ZatwierdÅº dodanie odwoÅ‚ania.
 
 ---
 
 ## Konfiguracja kluczy
 
-W pliku `appsettings.json` lub innym Ÿródle konfiguracji nale¿y umieœciæ klucze:
-Klucze powinny byæ przekazane w formacie Base64 i mieæ d³ugoœæ 32 bajtów (256 bitów).
+W pliku `appsettings.json` lub innym ÅºrÃ³dle konfiguracji naleÅ¼y umieÅ›ciÄ‡ klucze:
+
+```json
+{
+  "OlmedDataBus:WebhookKeys": {
+    "EncryptionKey": "mysecretkey1234567890123456mysecretkey12",
+    "HmacKey": "mysecretkey1234567890123456mysecretkey12"
+  }
+}
+```
+
+Klucze powinny byÄ‡ przekazane jako tekst o dÅ‚ugoÅ›ci 32 znakÃ³w (256 bitÃ³w - 32 bajty).
 
 ---
 
 ## Wymagania
 
-- .NET Standard 2.0 (kompatybilnoœæ z .NET Core 2.0+, .NET Framework 4.6.1+, .NET 5/6/7/8)
+- .NET Standard 2.0 (kompatybilnoÅ›Ä‡ z .NET Core 2.0+, .NET Framework 4.6.1+, .NET 5/6/7/8)
 - Do testowania: ASP.NET Core Web API (np. .NET 8)
 
 ---
 
 ## Licencja
 
-Biblioteka przeznaczona do u¿ytku partnerów Grupy OLMED.
+Biblioteka przeznaczona do uÅ¼ytku partnerÃ³w Grupy OLMED.
